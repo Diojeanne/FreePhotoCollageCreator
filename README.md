@@ -1,5 +1,7 @@
 # Free Photo Collage Creator
 
+**▶ [Try it live](https://diojeanne.github.io/FreePhotoCollageCreator/)** — no install, no account, runs entirely in your browser.
+
 A self-contained, single-file photo collage maker that runs entirely in your browser. Drop in photos, arrange them in a grid or an angled layout, frame each one with pan and zoom, and export a finished image as JPEG, PNG, or WebP.
 
 There is no build step, no installation, no account, and no server. The entire application is one HTML file. Nothing you do — including the photos you load — ever leaves your device.
@@ -25,7 +27,7 @@ There is no build step, no installation, no account, and no server. The entire a
 
 That's it. The single file is the whole application.
 
-> **Tip on persistence:** the "resume where you left off" feature relies on browser storage, which behaves differently depending on how you open the file. See [Saved sessions](#saved-sessions-persistence) for the details — the short version is that **Firefox works from a local file, and any hosted copy works in every browser.**
+> **Tip on persistence:** the "resume where you left off" feature relies on browser storage, which behaves differently depending on how you open the file. See [Saved sessions](#saved-sessions-persistence) for the details — the short version is that **Firefox works from a local file, and any hosted copy, including the [fully functional demo](https://diojeanne.github.io/FreePhotoCollageCreator/) works in every browser.**
 
 ---
 
@@ -118,6 +120,7 @@ Photos are stored as their original image data in **IndexedDB** (not as low-qual
 
 | How you open it | Persistence |
 |---|---|
+| [Use the fully-functional demo version](https://diojeanne.github.io/FreePhotoCollageCreator/) (any browser) | ✅ Works |
 | Hosted over `http://` or `https://` (any browser) | ✅ Works |
 | Local file (`file://`) in **Firefox** | ✅ Works |
 | Local file (`file://`) in **Chrome / Edge / Brave / other Chromium browsers** | ⚠️ Not saved — these browsers disable IndexedDB for local files by default |
