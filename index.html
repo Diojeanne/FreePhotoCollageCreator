@@ -1,0 +1,1068 @@
+<!DOCTYPE html>
+<!--
+  Free Photo Collage Creator — a self-contained photo collage maker.
+  Copyright (C) 2026 Clarissa Millarker
+
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Collage</title>
+<style>
+  :root {
+    --bg:#1b1c1f; --panel:#26282c; --frame-bg:#131418;
+    --line:#3a3d43; --line-hot:#5b8cff; --text:#e9eaec; --text-dim:#9aa0a8;
+    --control:#33363c; --control-h:#41454c; --seam:#ffffff;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 16px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    display: flex; flex-direction: column; overflow: hidden;
+    user-select: none; -webkit-user-select: none;
+  }
+  header {
+    flex: 0 0 auto; display: flex; align-items: center;
+    flex-wrap: wrap; gap: 10px 14px;
+    padding: 12px 18px; background: var(--panel); border-bottom: 1px solid var(--line);
+  }
+  header h1 { font-size: 17px; font-weight: 600; margin: 0; letter-spacing: .2px; }
+  header .hint { font-size: 12.5px; color: var(--text-dim); }
+  header .spacer { flex: 1; }
+  .group { display: flex; align-items: center; gap: 8px; }
+  .group label { font-size: 13px; color: var(--text-dim); }
+  .group input[type=number], .group select {
+    font: inherit; font-size: 15px; color: var(--text);
+    background: var(--frame-bg); border: 1px solid var(--line);
+    border-radius: 7px; padding: 7px 8px;
+  }
+  .group input[type=number] { width: 76px; text-align: right; }
+  .group input[type=color] { width: 34px; height: 34px; padding: 2px; background: var(--frame-bg); border: 1px solid var(--line); border-radius: 7px; cursor: pointer; }
+  .group select { cursor: pointer; }
+  #cellZoom { width: 130px; accent-color: var(--line-hot); cursor: pointer; vertical-align: middle; }
+  #cellZoom:disabled { cursor: default; opacity: .4; }
+  .group .btn:disabled { opacity: .4; cursor: default; }
+  .group .times { color: var(--text-dim); }
+
+  button.btn {
+    font: inherit; font-size: 14px; color: var(--text);
+    background: var(--control); border: 1px solid var(--line);
+    border-radius: 8px; padding: 8px 14px; cursor: pointer;
+  }
+  button.btn:hover { background: var(--control-h); }
+  button.btn:focus-visible { outline: 2px solid var(--line-hot); outline-offset: 2px; }
+  button.btn.primary { background: var(--line-hot); border-color: var(--line-hot); color: #fff; }
+  button.btn.primary:hover { filter: brightness(1.08); }
+
+  .stage-wrap {
+    flex: 1 1 auto; display: flex; align-items: center; justify-content: center;
+    padding: 24px; min-height: 0;
+  }
+  #stage {
+    position: relative; background: var(--seam);
+    transform-origin: center center; transform: scale(var(--fit, 1));
+  }
+  .frame { position: absolute; overflow: hidden; background: var(--frame-bg); touch-action: none; }
+  .frame.selected { box-shadow: inset 0 0 0 3px var(--line-hot); }
+  .frame.dragover { box-shadow: inset 0 0 0 3px var(--line-hot); }
+  .frame.has-image { cursor: grab; }
+  .frame.has-image.panning { cursor: grabbing; }
+  .frame img {
+    position: absolute; top: 0; left: 0; transform-origin: 0 0;
+    will-change: transform; pointer-events: none; -webkit-user-drag: none;
+  }
+  .placeholder {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 5px;
+    color: var(--text-dim); text-align: center; padding: 10px; pointer-events: none;
+  }
+  .placeholder .big { font-size: 17px; color: var(--text); font-weight: 500; }
+  .placeholder .small { font-size: 12.5px; }
+  .frame.has-image .placeholder { display: none; }
+  .controls {
+    position: absolute; left: 8px; right: 8px; bottom: 8px;
+    display: flex; align-items: center; gap: 7px;
+    padding: 6px 8px; background: rgba(20,21,24,.86);
+    border: 1px solid var(--line); border-radius: 10px;
+    opacity: 0; transition: opacity .12s ease; backdrop-filter: blur(2px);
+  }
+  .frame.has-image:hover .controls,
+  .frame.has-image:focus-within .controls { opacity: 1; }
+  .controls .icon {
+    flex: 0 0 auto; width: 30px; height: 30px; display: grid; place-items: center;
+    font-size: 16px; color: var(--text); background: var(--control);
+    border: 1px solid var(--line); border-radius: 7px; cursor: pointer;
+  }
+  .controls .icon:hover { background: var(--control-h); }
+  .controls input[type=range] { flex: 1 1 auto; min-width: 30px; height: 30px; accent-color: var(--line-hot); cursor: pointer; }
+
+  .divider { position: absolute; z-index: 5; background: transparent; touch-action: none; }
+  .divider.v { cursor: ew-resize; }
+  .divider.h { cursor: ns-resize; }
+  .divider:hover, .divider.dragging { background: rgba(91,140,255,.30); }
+
+  /* Polygon layouts: cells are clipped to arbitrary shapes, so the per-cell
+     control bar can't fit — those cells use drag / scroll / double-click. */
+  #stage.poly .controls { display: none; }
+  .seam-overlay { position: absolute; left: 0; top: 0; z-index: 6; pointer-events: none; }
+  .poly-drag { position: absolute; left: 0; top: 0; z-index: 7; pointer-events: none; }
+  .poly-drag line.poly-handle { pointer-events: stroke; }
+  .poly-drag line.poly-handle:hover,
+  .poly-drag line.poly-handle.dragging { stroke: rgba(91,140,255,.5) !important; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Collage</h1>
+  <span class="hint">Drag a seam to resize</span>
+  <span class="spacer"></span>
+  <div class="group">
+    <label>Layout</label>
+    <select id="layoutSel"></select>
+  </div>
+  <div class="group">
+    <label>Output</label>
+    <input type="number" id="outW" min="50" max="10000" step="1" value="1050">
+    <span class="times">×</span>
+    <input type="number" id="outH" min="50" max="10000" step="1" value="700">
+    <button class="btn" id="applySize">Apply</button>
+    <button class="btn" id="defaultSize" title="Restore 1050 × 700">Default</button>
+  </div>
+  <div class="group">
+    <label>Border</label>
+    <input type="number" id="borderW" min="0" max="50" step="1" value="2" title="Border thickness in pixels">
+    <input type="color" id="borderColor" value="#ffffff" title="Border color">
+  </div>
+  <div class="group">
+    <label>Format</label>
+    <select id="formatSel">
+      <option value="jpeg">JPEG</option>
+      <option value="png">PNG</option>
+      <option value="webp">WebP</option>
+    </select>
+  </div>
+  <div class="group" title="Zoom the selected photo. Click a photo to select it.">
+    <label>Zoom</label>
+    <input type="range" id="cellZoom" min="0" max="1000" value="500" disabled>
+    <button class="btn" id="cellZoomReset" title="Reset photo position" disabled>⟳</button>
+  </div>
+  <button class="btn primary" id="saveBtn">Save</button>
+  <button class="btn" id="clearAll">Clear all</button>
+</header>
+
+<div class="stage-wrap">
+  <div id="stage"></div>
+</div>
+
+<script>
+"use strict";
+
+let BORDER = 2;                   // seam thickness (px), user-adjustable
+let borderColor = '#ffffff';      // seam color, user-adjustable
+let outFormat = 'jpeg';           // export format: jpeg | png | webp
+let selectedIndex = null;         // currently-selected cell (drives header zoom slider)
+let cellZoomEl = null, cellZoomResetEl = null;  // header zoom controls
+const HIT = 14, SNAP_PX = 6;
+const ZOOM_MIN_FACTOR = 0.20, ZOOM_MAX_FACTOR = 6.0;
+const WHEEL_STEP = 0.0015, JPEG_QUALITY = 0.92;
+const MIN_CELL = 40, MAX_CELLS = 6;
+const DEFAULT_W = 1050, DEFAULT_H = 700;
+
+/* ---- Layout catalog ------------------------------------------------------ */
+/* engine 'adaptive' = the symmetric 2x2 (choose which divider is edge-to-edge).
+   engine 'general'  = depth-2 split: outer split into `sections`, each section
+   split the other way into that many cells. cells = sum(sections). */
+const LAYOUTS = [
+  { id:'2x2',  group:'Grid',        label:'2 × 2 (adaptive)', engine:'adaptive' },
+  { id:'row2', group:'Lines',       label:'Row of 2',    engine:'general', outer:'cols', sections:[1,1] },
+  { id:'col2', group:'Lines',       label:'Column of 2', engine:'general', outer:'rows', sections:[1,1] },
+  { id:'col3', group:'Lines',       label:'Column of 3', engine:'general', outer:'rows', sections:[1,1,1] },
+  { id:'row4', group:'Lines',       label:'Row of 4',    engine:'general', outer:'cols', sections:[1,1,1,1] },
+  { id:'col4', group:'Lines',       label:'Column of 4', engine:'general', outer:'rows', sections:[1,1,1,1] },
+  { id:'r12',  group:'Two rows',    label:'1 over 2', engine:'general', outer:'rows', sections:[1,2] },
+  { id:'r21',  group:'Two rows',    label:'2 over 1', engine:'general', outer:'rows', sections:[2,1] },
+  { id:'r13',  group:'Two rows',    label:'1 over 3', engine:'general', outer:'rows', sections:[1,3] },
+  { id:'r31',  group:'Two rows',    label:'3 over 1', engine:'general', outer:'rows', sections:[3,1] },
+  { id:'r23',  group:'Two rows',    label:'2 over 3', engine:'general', outer:'rows', sections:[2,3] },
+  { id:'r32',  group:'Two rows',    label:'3 over 2', engine:'general', outer:'rows', sections:[3,2] },
+  { id:'r24',  group:'Two rows',    label:'2 over 4', engine:'general', outer:'rows', sections:[2,4] },
+  { id:'r42',  group:'Two rows',    label:'4 over 2', engine:'general', outer:'rows', sections:[4,2] },
+  { id:'c12',  group:'Two columns', label:'1 beside 2', engine:'general', outer:'cols', sections:[1,2] },
+  { id:'c21',  group:'Two columns', label:'2 beside 1', engine:'general', outer:'cols', sections:[2,1] },
+  { id:'c13',  group:'Two columns', label:'1 beside 3', engine:'general', outer:'cols', sections:[1,3] },
+  { id:'c31',  group:'Two columns', label:'3 beside 1', engine:'general', outer:'cols', sections:[3,1] },
+  { id:'c23',  group:'Two columns', label:'2 beside 3', engine:'general', outer:'cols', sections:[2,3] },
+  { id:'c32',  group:'Two columns', label:'3 beside 2', engine:'general', outer:'cols', sections:[3,2] },
+
+  /* Polygon layouts — normalized 0..1. Static ones carry cells/seams; adjustable
+     ones carry params()/build(p)/handles(p)/clamp(p). Seams render via SVG,
+     cells via clip-path. k = horizontal run of an angled line over full height. */
+  { id:'angle3t', group:'Angled', label:'3 angled — wide top', engine:'poly',
+    params: () => ({ tL: 0.25, tR: 0.75 }),
+    clamp(p){ const k=0.25; p.tL=Math.max(0,Math.min(p.tL,p.tR-2*k)); p.tR=Math.min(1,Math.max(p.tR,p.tL+2*k)); },
+    build(p){ const k=0.25, {tL,tR}=p; return {
+      cells:[ [[0,0],[tL,0],[tL+k,1],[0,1]], [[tL,0],[tR,0],[tR-k,1],[tL+k,1]], [[tR,0],[1,0],[1,1],[tR-k,1]] ],
+      seams:[ [[tL,0],[tL+k,1]], [[tR,0],[tR-k,1]] ] }; },
+    handles(p){ const k=0.25; return [
+      { nx1:p.tL, ny1:0, nx2:p.tL+k, ny2:1, cursor:'ew-resize', drag:(q,nx,ny)=>{ q.tL=nx-k*ny; } },
+      { nx1:p.tR, ny1:0, nx2:p.tR-k, ny2:1, cursor:'ew-resize', drag:(q,nx,ny)=>{ q.tR=nx+k*ny; } } ]; } },
+  { id:'angle3b', group:'Angled', label:'3 angled — wide bottom', engine:'poly',
+    params: () => ({ bL: 0.25, bR: 0.75 }),
+    clamp(p){ const k=0.25; p.bL=Math.max(0,Math.min(p.bL,p.bR-2*k)); p.bR=Math.min(1,Math.max(p.bR,p.bL+2*k)); },
+    build(p){ const k=0.25, {bL,bR}=p; return {
+      cells:[ [[0,0],[bL+k,0],[bL,1],[0,1]], [[bL+k,0],[bR-k,0],[bR,1],[bL,1]], [[bR-k,0],[1,0],[1,1],[bR,1]] ],
+      seams:[ [[bL+k,0],[bL,1]], [[bR-k,0],[bR,1]] ] }; },
+    handles(p){ const k=0.25; return [
+      { nx1:p.bL+k, ny1:0, nx2:p.bL, ny2:1, cursor:'ew-resize', drag:(q,nx,ny)=>{ q.bL=nx-k*(1-ny); } },
+      { nx1:p.bR-k, ny1:0, nx2:p.bR, ny2:1, cursor:'ew-resize', drag:(q,nx,ny)=>{ q.bR=nx+k*(1-ny); } } ]; } },
+  { id:'chev3t', group:'Angled', label:'3 chevron — point down', engine:'poly',
+    cells:[ [[0,0],[1,0],[0.5,0.5]], [[0,0],[0.5,0.5],[0.5,1],[0,1]], [[1,0],[0.5,0.5],[0.5,1],[1,1]] ],
+    seams:[ [[0,0],[0.5,0.5]], [[1,0],[0.5,0.5]], [[0.5,0.5],[0.5,1]] ] },
+  { id:'chev3b', group:'Angled', label:'3 chevron — point up', engine:'poly',
+    cells:[ [[0,1],[1,1],[0.5,0.5]], [[0,1],[0.5,0.5],[0.5,0],[0,0]], [[1,1],[0.5,0.5],[0.5,0],[1,0]] ],
+    seams:[ [[0,1],[0.5,0.5]], [[1,1],[0.5,0.5]], [[0.5,0.5],[0.5,0]] ] },
+  { id:'x4', group:'Angled', label:'4 X-split', engine:'poly',
+    cells:[ [[0,0],[1,0],[0.5,0.5]], [[1,0],[1,1],[0.5,0.5]], [[1,1],[0,1],[0.5,0.5]], [[0,1],[0,0],[0.5,0.5]] ],
+    seams:[ [[0,0],[1,1]], [[1,0],[0,1]] ] },
+  { id:'pin4', group:'Angled', label:'4 pinwheel', engine:'poly',
+    params: () => ({ vTop: 1/3, vBot: 2/3, hMid: 0.5 }),
+    clamp(p){ const m=0.05; p.hMid=Math.max(m,Math.min(1-m,p.hMid)); p.vTop=Math.max(m,Math.min(p.vTop,p.vBot-m)); p.vBot=Math.min(1-m,Math.max(p.vBot,p.vTop+m)); },
+    build(p){ const {vTop,vBot,hMid}=p; return {
+      cells:[ [[0,0],[vTop,0],[vTop,hMid],[0,1]], [[vTop,0],[1,0],[vBot,hMid],[vTop,hMid]],
+              [[1,0],[1,1],[vBot,1],[vBot,hMid]], [[0,1],[vTop,hMid],[vBot,hMid],[vBot,1]] ],
+      seams:[ [[vTop,0],[vTop,hMid]], [[vTop,hMid],[0,1]], [[vTop,hMid],[vBot,hMid]],
+              [[vBot,hMid],[1,0]], [[vBot,hMid],[vBot,1]] ] }; },
+    handles(p){ return [
+      { nx1:p.vTop, ny1:0, nx2:p.vTop, ny2:p.hMid, cursor:'ew-resize', drag:(q,nx,ny)=>{ q.vTop=nx; } },
+      { nx1:p.vBot, ny1:p.hMid, nx2:p.vBot, ny2:1, cursor:'ew-resize', drag:(q,nx,ny)=>{ q.vBot=nx; } },
+      { nx1:p.vTop, ny1:p.hMid, nx2:p.vBot, ny2:p.hMid, cursor:'ns-resize', drag:(q,nx,ny)=>{ q.hMid=ny; } } ]; } },
+];
+function cellCount(L){
+  if (L.engine === 'poly') return L.cells ? L.cells.length : L.build(L.params()).cells.length;
+  if (L.engine === 'adaptive') return 4;
+  return L.sections.reduce((a,b)=>a+b,0);
+}
+
+let OUT_W = DEFAULT_W, OUT_H = DEFAULT_H, fitScale = 1;
+let layout = LAYOUTS[0];
+let activeCells = 4;
+
+/* Adaptive-engine state (2x2 only). See prior design: at most one axis off-axis. */
+let av = 0.5, bv = 0.5, ah = 0.5, bh = 0.5;
+/* General-engine state. */
+let outerFracs = [];   // length = sections.length, sums to 1
+let innerFracs = [];   // innerFracs[i] length = sections[i], sums to 1
+
+const stage = document.getElementById('stage');
+const frames = [];
+let currentDividers = null;
+
+/* ---- Shared helpers ------------------------------------------------------ */
+function clampFrac(frac, inner) {
+  const m = Math.min(0.49, MIN_CELL / inner);
+  return Math.max(m, Math.min(1 - m, frac));
+}
+const EPS = 1e-9;
+const isAlignedV = () => Math.abs(av - bv) < EPS;
+const isAlignedH = () => Math.abs(ah - bh) < EPS;
+
+/* ---- Adaptive geometry (2x2) --------------------------------------------- */
+function adaptiveGeom() {
+  const innerW = Math.max(2, OUT_W - 3 * BORDER);
+  const innerH = Math.max(2, OUT_H - 3 * BORDER);
+  const colsMode = !isAlignedH();
+  let rects;
+  if (colsMode) {
+    const leftW = clampFrac(av, innerW) * innerW, rightW = innerW - leftW;
+    const lx = BORDER, rx = BORDER + leftW + BORDER;
+    const lh = clampFrac(ah, innerH) * innerH, rh = clampFrac(bh, innerH) * innerH;
+    rects = [
+      { x: lx, y: BORDER, w: leftW, h: lh },
+      { x: rx, y: BORDER, w: rightW, h: rh },
+      { x: lx, y: BORDER + lh + BORDER, w: leftW, h: innerH - lh },
+      { x: rx, y: BORDER + rh + BORDER, w: rightW, h: innerH - rh },
+    ];
+  } else {
+    const topH = clampFrac(ah, innerH) * innerH, botH = innerH - topH;
+    const ty = BORDER, by = BORDER + topH + BORDER;
+    const tlW = clampFrac(av, innerW) * innerW, blW = clampFrac(bv, innerW) * innerW;
+    rects = [
+      { x: BORDER, y: ty, w: tlW, h: topH },
+      { x: BORDER + tlW + BORDER, y: ty, w: innerW - tlW, h: topH },
+      { x: BORDER, y: by, w: blW, h: botH },
+      { x: BORDER + blW + BORDER, y: by, w: innerW - blW, h: botH },
+    ];
+  }
+  return { rects, mode: colsMode ? 'cols' : 'rows', aligned: isAlignedV() && isAlignedH() };
+}
+
+/* ---- General geometry (depth-2 split) ------------------------------------ */
+function generalGeom() {
+  const { outer, sections } = layout;
+  const S = sections.length;
+  const rects = [], dividers = [];
+  if (outer === 'rows') {
+    const availH = Math.max(2, OUT_H - (S + 1) * BORDER);
+    let y = BORDER;
+    for (let i = 0; i < S; i++) {
+      const hi = outerFracs[i] * availH, C = sections[i];
+      const availW = Math.max(2, OUT_W - (C + 1) * BORDER);
+      let x = BORDER;
+      for (let j = 0; j < C; j++) {
+        const wj = innerFracs[i][j] * availW;
+        rects.push({ x, y, w: wj, h: hi });
+        if (j < C - 1) dividers.push({ orient:'v', x:x+wj, y, w:BORDER, h:hi, kind:'inner', i, j });
+        x += wj + BORDER;
+      }
+      if (i < S - 1) dividers.push({ orient:'h', x:0, y:y+hi, w:OUT_W, h:BORDER, kind:'outer', i, j:-1 });
+      y += hi + BORDER;
+    }
+  } else {
+    const availW = Math.max(2, OUT_W - (S + 1) * BORDER);
+    let x = BORDER;
+    for (let i = 0; i < S; i++) {
+      const wi = outerFracs[i] * availW, R = sections[i];
+      const availH = Math.max(2, OUT_H - (R + 1) * BORDER);
+      let y = BORDER;
+      for (let j = 0; j < R; j++) {
+        const hj = innerFracs[i][j] * availH;
+        rects.push({ x, y, w: wi, h: hj });
+        if (j < R - 1) dividers.push({ orient:'h', x, y:y+hj, w:wi, h:BORDER, kind:'inner', i, j });
+        y += hj + BORDER;
+      }
+      if (i < S - 1) dividers.push({ orient:'v', x:x+wi, y:0, w:BORDER, h:OUT_H, kind:'outer', i, j:-1 });
+      x += wi + BORDER;
+    }
+  }
+  return { rects, dividers };
+}
+
+function outerAxisInfo() {
+  const S = layout.sections.length;
+  const total = layout.outer === 'rows' ? OUT_H : OUT_W;
+  const avail = Math.max(2, total - (S + 1) * BORDER);
+  const starts = [], sizes = []; let pos = BORDER;
+  for (let i = 0; i < S; i++) { const sz = outerFracs[i] * avail; starts.push(pos); sizes.push(sz); pos += sz + BORDER; }
+  return { avail, starts, sizes };
+}
+function innerAxisInfo(i) {
+  const C = layout.sections[i];
+  const total = layout.outer === 'rows' ? OUT_W : OUT_H;
+  const avail = Math.max(2, total - (C + 1) * BORDER);
+  const starts = [], sizes = []; let pos = BORDER;
+  for (let j = 0; j < C; j++) { const sz = innerFracs[i][j] * avail; starts.push(pos); sizes.push(sz); pos += sz + BORDER; }
+  return { avail, starts, sizes };
+}
+function updateOuter(k, coord) {
+  const { avail, starts, sizes } = outerAxisInfo();
+  const pairSum = sizes[k] + sizes[k + 1];
+  let nk = (coord - BORDER / 2) - starts[k];
+  nk = Math.max(MIN_CELL, Math.min(pairSum - MIN_CELL, nk));
+  outerFracs[k] = nk / avail; outerFracs[k + 1] = (pairSum - nk) / avail;
+}
+function updateInner(i, j, coord) {
+  const { avail, starts, sizes } = innerAxisInfo(i);
+  const pairSum = sizes[j] + sizes[j + 1];
+  let nj = (coord - BORDER / 2) - starts[j];
+  nj = Math.max(MIN_CELL, Math.min(pairSum - MIN_CELL, nj));
+  innerFracs[i][j] = nj / avail; innerFracs[i][j + 1] = (pairSum - nj) / avail;
+}
+function applyGeneralDrag(d, lx, ly) {
+  const coord = d.orient === 'h' ? ly : lx;
+  if (d.kind === 'outer') updateOuter(d.i, coord);
+  else updateInner(d.i, d.j, coord);
+}
+
+/* ---- Frames -------------------------------------------------------------- */
+function makeFrame(index) {
+  const el = document.createElement('div');
+  el.className = 'frame'; el.tabIndex = 0;
+  el.innerHTML = `
+    <img alt="">
+    <div class="placeholder">
+      <span class="big">Cell ${index + 1}</span>
+      <span class="small">Drop a photo, or click</span>
+    </div>
+    <div class="controls">
+      <div class="icon" data-act="out" title="Zoom out" role="button" tabindex="0">−</div>
+      <input type="range" min="0" max="1000" value="0" title="Zoom">
+      <div class="icon" data-act="in" title="Zoom in" role="button" tabindex="0">+</div>
+      <div class="icon" data-act="reset" title="Reset position" role="button" tabindex="0">⟳</div>
+      <div class="icon" data-act="replace" title="Replace image" role="button" tabindex="0">⊕</div>
+    </div>`;
+  stage.appendChild(el);
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file'; fileInput.accept = 'image/*'; fileInput.style.display = 'none';
+  el.appendChild(fileInput);
+  const f = {
+    index, el, img: el.querySelector('img'), range: el.querySelector('input[type=range]'), fileInput,
+    objectUrl: null, blob: null, natW: 0, natH: 0, cellW: 1, cellH: 1,
+    scale: 1, minScale: 1, maxScale: 1, coverScale: 1, offX: 0, offY: 0, hasImage: false,
+  };
+  frames.push(f); wireFrame(f); return f;
+}
+function clearFrame(f) {
+  if (f.objectUrl) URL.revokeObjectURL(f.objectUrl);
+  f.objectUrl = null; f.blob = null; f.hasImage = false;
+  f.img.removeAttribute('src'); f.el.classList.remove('has-image');
+  delImageRec(f.index); scheduleSave();
+  if (selectedIndex === f.index) selectCell(firstImageIndex());
+}
+function loadFile(f, file) {
+  if (!file || !file.type.startsWith('image/')) return;
+  if (f.objectUrl) URL.revokeObjectURL(f.objectUrl);
+  f.objectUrl = URL.createObjectURL(file);
+  f.blob = file;
+  const probe = new Image();
+  probe.onload = () => {
+    f.natW = probe.naturalWidth; f.natH = probe.naturalHeight;
+    f.img.src = f.objectUrl;
+    f.img.style.width = f.natW + 'px'; f.img.style.height = f.natH + 'px';
+    f.hasImage = true; f.el.classList.add('has-image');
+    recomputeBounds(f); resetFrame(f);
+    saveImageRec(f.index); scheduleSave();
+    selectCell(f.index);
+  };
+  probe.onerror = () => { URL.revokeObjectURL(f.objectUrl); f.objectUrl = null; f.blob = null; };
+  probe.src = f.objectUrl;
+}
+function recomputeBounds(f) {
+  if (!f.hasImage) return;
+  f.coverScale = Math.max(f.cellW / f.natW, f.cellH / f.natH);
+  f.minScale = f.coverScale * ZOOM_MIN_FACTOR;
+  f.maxScale = f.coverScale * ZOOM_MAX_FACTOR;
+  f.scale = Math.max(f.minScale, Math.min(f.maxScale, f.scale));
+  applyTransform(f); syncSlider(f);
+}
+function resetFrame(f) {
+  f.scale = f.coverScale;
+  f.offX = (f.cellW - f.natW * f.scale) / 2;
+  f.offY = (f.cellH - f.natH * f.scale) / 2;
+  applyTransform(f); syncSlider(f);
+}
+function applyTransform(f) { f.img.style.transform = `translate(${f.offX}px, ${f.offY}px) scale(${f.scale})`; scheduleSave(); }
+function syncSlider(f) {
+  const t = (Math.log(f.scale) - Math.log(f.minScale)) / (Math.log(f.maxScale) - Math.log(f.minScale));
+  f.range.value = Math.round(Math.max(0, Math.min(1, t)) * 1000);
+  if (f.index === selectedIndex) updateHeaderZoom();
+}
+function sliderToScale(f, v) {
+  const t = v / 1000;
+  return Math.exp(Math.log(f.minScale) + t * (Math.log(f.maxScale) - Math.log(f.minScale)));
+}
+function zoomAt(f, newScale, cx, cy) {
+  newScale = Math.max(f.minScale, Math.min(f.maxScale, newScale));
+  const k = newScale / f.scale;
+  f.offX = cx - (cx - f.offX) * k; f.offY = cy - (cy - f.offY) * k;
+  f.scale = newScale; applyTransform(f); syncSlider(f);
+}
+
+/* ---- Cell selection (drives the header Zoom slider) ---------------------- */
+function firstImageIndex() {
+  for (let i = 0; i < activeCells; i++) if (frames[i].hasImage) return i;
+  return null;
+}
+function selectCell(i) {
+  selectedIndex = (i != null && i >= 0 && i < activeCells && frames[i].hasImage) ? i : null;
+  frames.forEach((f, idx) => f.el.classList.toggle('selected', idx === selectedIndex));
+  updateHeaderZoom();
+}
+function ensureSelection() {
+  if (selectedIndex != null && selectedIndex < activeCells && frames[selectedIndex].hasImage) selectCell(selectedIndex);
+  else selectCell(firstImageIndex());
+}
+function updateHeaderZoom() {
+  if (!cellZoomEl) return;
+  const f = (selectedIndex != null) ? frames[selectedIndex] : null;
+  const on = !!(f && f.hasImage);
+  cellZoomEl.disabled = !on;
+  cellZoomResetEl.disabled = !on;
+  if (on) {
+    const t = (Math.log(f.scale) - Math.log(f.minScale)) / (Math.log(f.maxScale) - Math.log(f.minScale));
+    cellZoomEl.value = Math.round(Math.max(0, Math.min(1, t)) * 1000);
+  }
+}
+function wireFrame(f) {
+  const el = f.el;
+  el.addEventListener('click', (e) => { if (!f.hasImage && !e.target.closest('.controls')) f.fileInput.click(); });
+  f.fileInput.addEventListener('change', () => {
+    if (f.fileInput.files[0]) loadFile(f, f.fileInput.files[0]);
+    f.fileInput.value = '';
+  });
+  el.addEventListener('dragover', (e) => { e.preventDefault(); el.classList.add('dragover'); });
+  el.addEventListener('dragleave', () => el.classList.remove('dragover'));
+  el.addEventListener('drop', (e) => {
+    e.preventDefault(); el.classList.remove('dragover');
+    const file = [...(e.dataTransfer.files || [])].find(x => x.type.startsWith('image/'));
+    if (file) loadFile(f, file);
+  });
+  let panning = false, lastX = 0, lastY = 0;
+  el.addEventListener('pointerdown', (e) => {
+    if (!f.hasImage || e.target.closest('.controls')) return;
+    if (selectedIndex !== f.index) selectCell(f.index);
+    panning = true; lastX = e.clientX; lastY = e.clientY;
+    el.classList.add('panning'); el.setPointerCapture(e.pointerId);
+  });
+  el.addEventListener('pointermove', (e) => {
+    if (!panning) return;
+    f.offX += (e.clientX - lastX) / fitScale; f.offY += (e.clientY - lastY) / fitScale;
+    lastX = e.clientX; lastY = e.clientY; applyTransform(f);
+  });
+  const endPan = (e) => {
+    if (!panning) return;
+    panning = false; el.classList.remove('panning');
+    try { el.releasePointerCapture(e.pointerId); } catch (_) {}
+  };
+  el.addEventListener('pointerup', endPan);
+  el.addEventListener('pointercancel', endPan);
+  el.addEventListener('wheel', (e) => {
+    if (!f.hasImage) return;
+    if (selectedIndex !== f.index) selectCell(f.index);
+    e.preventDefault();
+    const r = el.getBoundingClientRect();
+    zoomAt(f, f.scale * Math.exp(-e.deltaY * WHEEL_STEP),
+           (e.clientX - r.left) / fitScale, (e.clientY - r.top) / fitScale);
+  }, { passive: false });
+  el.addEventListener('dblclick', () => { if (f.hasImage) resetFrame(f); });
+  f.range.addEventListener('input', () => {
+    if (!f.hasImage) return;
+    zoomAt(f, sliderToScale(f, +f.range.value), f.cellW / 2, f.cellH / 2);
+  });
+  el.querySelectorAll('.controls .icon').forEach((btn) => {
+    const act = () => {
+      if (!f.hasImage && btn.dataset.act !== 'replace') return;
+      switch (btn.dataset.act) {
+        case 'in':      zoomAt(f, f.scale * 1.15, f.cellW / 2, f.cellH / 2); break;
+        case 'out':     zoomAt(f, f.scale / 1.15, f.cellW / 2, f.cellH / 2); break;
+        case 'reset':   resetFrame(f); break;
+        case 'replace': f.fileInput.click(); break;
+      }
+    };
+    btn.addEventListener('click', (e) => { e.stopPropagation(); act(); });
+    btn.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); act(); } });
+  });
+}
+
+/* ---- Adaptive handles (2x2) ---------------------------------------------- */
+const aHandles = {};
+const A_ORIENT = { tv:'v', bv:'v', fullV:'v', lh:'h', rh:'h', fullH:'h' };
+function makeAdaptiveHandles() {
+  for (const role of Object.keys(A_ORIENT)) {
+    const d = document.createElement('div');
+    d.className = 'divider ' + A_ORIENT[role]; d.style.display = 'none';
+    stage.appendChild(d); aHandles[role] = d; wireAdaptive(d, role);
+  }
+}
+let aDrag = null;
+function wireAdaptive(handle, role) {
+  handle.addEventListener('pointerdown', (e) => {
+    e.preventDefault(); aDrag = role; handle.classList.add('dragging'); handle.setPointerCapture(e.pointerId);
+  });
+  handle.addEventListener('pointermove', (e) => {
+    if (aDrag !== role) return;
+    const sr = stage.getBoundingClientRect();
+    applyAdaptiveDrag(role, (e.clientX - sr.left) / fitScale, (e.clientY - sr.top) / fitScale);
+    relayout();
+  });
+  const up = (e) => { if (aDrag === role) { aDrag = null; handle.classList.remove('dragging'); try { handle.releasePointerCapture(e.pointerId); } catch (_) {} } };
+  handle.addEventListener('pointerup', up);
+  handle.addEventListener('pointercancel', up);
+}
+function applyAdaptiveDrag(role, lx, ly) {
+  const innerW = OUT_W - 3 * BORDER, innerH = OUT_H - 3 * BORDER;
+  const fw = clampFrac((lx - BORDER) / innerW, innerW), fh = clampFrac((ly - BORDER) / innerH, innerH);
+  const sW = SNAP_PX / innerW, sH = SNAP_PX / innerH;
+  switch (role) {
+    case 'tv':   av = (Math.abs(fw - bv) < sW) ? bv : fw; break;
+    case 'bv':   bv = (Math.abs(fw - av) < sW) ? av : fw; break;
+    case 'fullV': av = bv = fw; break;
+    case 'lh':   ah = (Math.abs(fh - bh) < sH) ? bh : fh; break;
+    case 'rh':   bh = (Math.abs(fh - ah) < sH) ? ah : fh; break;
+    case 'fullH': ah = bh = fh; break;
+  }
+}
+function placeV(el, centerX, top, height) {
+  el.style.display = 'block';
+  el.style.left = (centerX - HIT / 2) + 'px'; el.style.width = HIT + 'px';
+  el.style.top = top + 'px'; el.style.height = height + 'px';
+}
+function placeH(el, centerY, left, width) {
+  el.style.display = 'block';
+  el.style.top = (centerY - HIT / 2) + 'px'; el.style.height = HIT + 'px';
+  el.style.left = left + 'px'; el.style.width = width + 'px';
+}
+function layoutAdaptiveHandles(rects, mode, aligned) {
+  for (const r in aHandles) aHandles[r].style.display = 'none';
+  const [TL, TR, BL, BR] = rects;
+  if (aligned) {
+    placeV(aHandles.tv, TL.x + TL.w + BORDER / 2, TL.y, TL.h);
+    placeV(aHandles.bv, BL.x + BL.w + BORDER / 2, BL.y, BL.h);
+    placeH(aHandles.lh, TL.y + TL.h + BORDER / 2, TL.x, TL.w);
+    placeH(aHandles.rh, TR.y + TR.h + BORDER / 2, TR.x, TR.w);
+  } else if (mode === 'rows') {
+    placeV(aHandles.tv, TL.x + TL.w + BORDER / 2, TL.y, TL.h);
+    placeV(aHandles.bv, BL.x + BL.w + BORDER / 2, BL.y, BL.h);
+    placeH(aHandles.fullH, TL.y + TL.h + BORDER / 2, 0, OUT_W);
+  } else {
+    placeH(aHandles.lh, TL.y + TL.h + BORDER / 2, TL.x, TL.w);
+    placeH(aHandles.rh, TR.y + TR.h + BORDER / 2, TR.x, TR.w);
+    placeV(aHandles.fullV, TL.x + TL.w + BORDER / 2, 0, OUT_H);
+  }
+}
+
+/* ---- General handles (dynamic count) ------------------------------------- */
+const gHandles = [];
+function ensureGHandles(n) {
+  while (gHandles.length < n) {
+    const d = document.createElement('div'); d.className = 'divider'; stage.appendChild(d);
+    const idx = gHandles.length; wireGeneral(d, idx); gHandles.push(d);
+  }
+  while (gHandles.length > n) { gHandles.pop().remove(); }
+}
+let gDrag = null;
+function wireGeneral(handle, idx) {
+  handle.addEventListener('pointerdown', (e) => {
+    e.preventDefault(); gDrag = idx; handle.classList.add('dragging'); handle.setPointerCapture(e.pointerId);
+  });
+  handle.addEventListener('pointermove', (e) => {
+    if (gDrag !== idx || !currentDividers || !currentDividers[idx]) return;
+    const sr = stage.getBoundingClientRect();
+    applyGeneralDrag(currentDividers[idx], (e.clientX - sr.left) / fitScale, (e.clientY - sr.top) / fitScale);
+    relayout();
+  });
+  const up = (e) => { if (gDrag === idx) { gDrag = null; handle.classList.remove('dragging'); try { handle.releasePointerCapture(e.pointerId); } catch (_) {} } };
+  handle.addEventListener('pointerup', up);
+  handle.addEventListener('pointercancel', up);
+}
+function layoutGeneralHandles() {
+  ensureGHandles(currentDividers.length);
+  currentDividers.forEach((d, idx) => {
+    const el = gHandles[idx];
+    el.className = 'divider ' + d.orient;
+    if (d.orient === 'v') placeV(el, d.x + BORDER / 2, d.y, d.h);
+    else placeH(el, d.y + BORDER / 2, d.x, d.w);
+  });
+}
+
+/* ---- Polygon engine ------------------------------------------------------ */
+let seamSvg = null, polyDragSvg = null, polyParams = null, polyDrag = null;
+const polyHandleEls = [];
+let currentPolyHandles = [];
+
+function activePolyNorm() {
+  if (layout.build) return layout.build(polyParams);
+  return { cells: layout.cells, seams: layout.seams };
+}
+function polyAbs(cells, seams) {
+  const ac = cells.map(poly => {
+    const pts = poly.map(([x, y]) => ({ x: x * OUT_W, y: y * OUT_H }));
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const p of pts) { minX = Math.min(minX, p.x); minY = Math.min(minY, p.y); maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y); }
+    return { pts, minX, minY, w: maxX - minX, h: maxY - minY };
+  });
+  const as = seams.map(([[x1, y1], [x2, y2]]) =>
+    ({ x1: x1 * OUT_W, y1: y1 * OUT_H, x2: x2 * OUT_W, y2: y2 * OUT_H }));
+  return { cells: ac, seams: as };
+}
+function ensurePolyHandles(n) {
+  while (polyHandleEls.length < n) {
+    const ln = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    ln.setAttribute('class', 'poly-handle');
+    ln.setAttribute('stroke', 'transparent');
+    ln.setAttribute('stroke-width', HIT);
+    ln.setAttribute('pointer-events', 'stroke');
+    polyDragSvg.appendChild(ln);
+    const idx = polyHandleEls.length; wirePolyHandle(ln, idx); polyHandleEls.push(ln);
+  }
+  while (polyHandleEls.length > n) { polyHandleEls.pop().remove(); }
+}
+function wirePolyHandle(ln, idx) {
+  ln.addEventListener('pointerdown', (e) => {
+    e.preventDefault(); polyDrag = idx; ln.classList.add('dragging');
+    try { ln.setPointerCapture(e.pointerId); } catch (_) {}
+  });
+  ln.addEventListener('pointermove', (e) => {
+    if (polyDrag !== idx || !currentPolyHandles[idx]) return;
+    const sr = stage.getBoundingClientRect();
+    const nx = ((e.clientX - sr.left) / fitScale) / OUT_W;
+    const ny = ((e.clientY - sr.top) / fitScale) / OUT_H;
+    currentPolyHandles[idx].drag(polyParams, nx, ny);
+    if (layout.clamp) layout.clamp(polyParams);
+    relayout();
+  });
+  const up = (e) => { if (polyDrag === idx) { polyDrag = null; ln.classList.remove('dragging'); try { ln.releasePointerCapture(e.pointerId); } catch (_) {} } };
+  ln.addEventListener('pointerup', up);
+  ln.addEventListener('pointercancel', up);
+}
+function updateSeamSvg(seams) {
+  seamSvg.setAttribute('width', OUT_W);
+  seamSvg.setAttribute('height', OUT_H);
+  seamSvg.setAttribute('viewBox', `0 0 ${OUT_W} ${OUT_H}`);
+  let s = `<rect x="${BORDER / 2}" y="${BORDER / 2}" width="${OUT_W - BORDER}" height="${OUT_H - BORDER}" fill="none" stroke="${borderColor}" stroke-width="${BORDER}"/>`;
+  for (const g of seams) s += `<line x1="${g.x1}" y1="${g.y1}" x2="${g.x2}" y2="${g.y2}" stroke="${borderColor}" stroke-width="${BORDER}" stroke-linecap="butt"/>`;
+  seamSvg.innerHTML = s;
+  seamSvg.style.display = 'block';
+}
+function relayoutPoly() {
+  stage.classList.add('poly');
+  const norm = activePolyNorm();
+  const { cells, seams } = polyAbs(norm.cells, norm.seams);
+  frames.forEach((f, i) => {
+    if (i < activeCells) {
+      const c = cells[i];
+      f.el.style.display = 'block';
+      f.el.style.left = c.minX + 'px'; f.el.style.top = c.minY + 'px';
+      f.el.style.width = c.w + 'px'; f.el.style.height = c.h + 'px';
+      const cp = 'polygon(' + c.pts.map(p => `${(p.x - c.minX).toFixed(2)}px ${(p.y - c.minY).toFixed(2)}px`).join(',') + ')';
+      f.el.style.clipPath = cp; f.el.style.webkitClipPath = cp;
+      f.cellW = c.w; f.cellH = c.h; recomputeBounds(f);
+    } else {
+      f.el.style.display = 'none';
+    }
+  });
+  for (const r in aHandles) aHandles[r].style.display = 'none';
+  ensureGHandles(0);
+  updateSeamSvg(seams);
+  if (layout.handles) {
+    currentPolyHandles = layout.handles(polyParams);
+    ensurePolyHandles(currentPolyHandles.length);
+    polyDragSvg.setAttribute('width', OUT_W);
+    polyDragSvg.setAttribute('height', OUT_H);
+    polyDragSvg.setAttribute('viewBox', `0 0 ${OUT_W} ${OUT_H}`);
+    polyDragSvg.style.display = 'block';
+    currentPolyHandles.forEach((h, i) => {
+      const ln = polyHandleEls[i];
+      ln.setAttribute('x1', (h.nx1 * OUT_W).toFixed(2)); ln.setAttribute('y1', (h.ny1 * OUT_H).toFixed(2));
+      ln.setAttribute('x2', (h.nx2 * OUT_W).toFixed(2)); ln.setAttribute('y2', (h.ny2 * OUT_H).toFixed(2));
+      ln.style.cursor = h.cursor || 'move';
+    });
+  } else {
+    currentPolyHandles = []; ensurePolyHandles(0);
+    if (polyDragSvg) polyDragSvg.style.display = 'none';
+  }
+  scheduleSave();
+}
+
+/* ---- Dispatch ------------------------------------------------------------ */
+function computeRects() {
+  if (layout.engine === 'adaptive') { const g = adaptiveGeom(); currentDividers = null; return g; }
+  const g = generalGeom(); currentDividers = g.dividers; return { rects: g.rects };
+}
+function relayout() {
+  if (layout.engine === 'poly') return relayoutPoly();
+  stage.classList.remove('poly');
+  if (seamSvg) seamSvg.style.display = 'none';
+  if (polyDragSvg) polyDragSvg.style.display = 'none';
+  const g = computeRects();
+  const rects = g.rects;
+  frames.forEach((f, i) => {
+    if (i < activeCells) {
+      const r = rects[i];
+      f.el.style.display = 'block';
+      f.el.style.clipPath = 'none'; f.el.style.webkitClipPath = 'none';
+      f.el.style.left = r.x + 'px'; f.el.style.top = r.y + 'px';
+      f.el.style.width = r.w + 'px'; f.el.style.height = r.h + 'px';
+      f.cellW = r.w; f.cellH = r.h; recomputeBounds(f);
+    } else {
+      f.el.style.display = 'none';
+    }
+  });
+  if (layout.engine === 'adaptive') layoutAdaptiveHandles(rects, g.mode, g.aligned);
+  else layoutGeneralHandles();
+  scheduleSave();
+}
+
+/* ---- Layout selection ---------------------------------------------------- */
+function setLayout(id) {
+  const L = LAYOUTS.find(x => x.id === id) || LAYOUTS[0];
+  layout = L;
+  activeCells = cellCount(L);
+  if (L.engine === 'general') {
+    const S = L.sections.length;
+    outerFracs = Array.from({ length: S }, () => 1 / S);
+    innerFracs = L.sections.map(C => Array.from({ length: C }, () => 1 / C));
+    for (const r in aHandles) aHandles[r].style.display = 'none';
+  } else if (L.engine === 'poly') {
+    polyParams = L.params ? L.params() : null;
+    for (const r in aHandles) aHandles[r].style.display = 'none';
+    ensureGHandles(0);
+  } else {
+    av = bv = ah = bh = 0.5;
+    ensureGHandles(0);
+  }
+  frames.forEach((f, i) => { if (i >= activeCells) clearFrame(f); });
+  fit(); relayout();
+  ensureSelection();
+}
+
+/* ---- Fit / output size --------------------------------------------------- */
+function fit() {
+  const wrap = document.querySelector('.stage-wrap');
+  fitScale = Math.min((wrap.clientWidth - 48) / OUT_W, (wrap.clientHeight - 48) / OUT_H);
+  stage.style.setProperty('--fit', fitScale);
+}
+function applyOutputSize(w, h) {
+  OUT_W = Math.max(50, Math.min(10000, Math.round(w) || DEFAULT_W));
+  OUT_H = Math.max(50, Math.min(10000, Math.round(h) || DEFAULT_H));
+  document.getElementById('outW').value = OUT_W;
+  document.getElementById('outH').value = OUT_H;
+  stage.style.width = OUT_W + 'px'; stage.style.height = OUT_H + 'px';
+  fit(); relayout();
+}
+
+/* ---- Export -------------------------------------------------------------- */
+function saveImage() {
+  const canvas = document.createElement('canvas');
+  canvas.width = OUT_W; canvas.height = OUT_H;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = borderColor; ctx.fillRect(0, 0, OUT_W, OUT_H);
+
+  if (layout.engine === 'poly') {
+    const norm = activePolyNorm();
+    const { cells, seams } = polyAbs(norm.cells, norm.seams);
+    cells.forEach((c, i) => {
+      const f = frames[i];
+      if (!f || !f.hasImage) return;
+      ctx.save();
+      ctx.beginPath();
+      c.pts.forEach((p, k) => (k ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+      ctx.closePath(); ctx.clip();
+      ctx.drawImage(f.img, c.minX + f.offX, c.minY + f.offY, f.natW * f.scale, f.natH * f.scale);
+      ctx.restore();
+    });
+    ctx.strokeStyle = borderColor; ctx.lineWidth = BORDER; ctx.lineCap = 'butt';
+    for (const g of seams) { ctx.beginPath(); ctx.moveTo(g.x1, g.y1); ctx.lineTo(g.x2, g.y2); ctx.stroke(); }
+    ctx.lineWidth = BORDER; ctx.strokeRect(BORDER / 2, BORDER / 2, OUT_W - BORDER, OUT_H - BORDER);
+  } else {
+    const { rects } = computeRects();
+    rects.forEach((r, i) => {
+      const f = frames[i];
+      if (!f || !f.hasImage) return;
+      ctx.save();
+      ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip();
+      ctx.drawImage(f.img, r.x + f.offX, r.y + f.offY, f.natW * f.scale, f.natH * f.scale);
+      ctx.restore();
+    });
+  }
+
+  const mime = outFormat === 'png' ? 'image/png' : outFormat === 'webp' ? 'image/webp' : 'image/jpeg';
+  const quality = outFormat === 'png' ? undefined : JPEG_QUALITY;
+  canvas.toBlob((blob) => {
+    if (!blob) { alert('Export failed — your browser may not support ' + outFormat.toUpperCase() + ' export, or it blocked canvas readback.'); return; }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename();
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }, mime, quality);
+}
+function filename() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  const ext = outFormat === 'png' ? 'png' : outFormat === 'webp' ? 'webp' : 'jpg';
+  return `PhotoCollage-${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}.${ext}`;
+}
+
+/* ---- Border apply -------------------------------------------------------- */
+function applyBorder() {
+  stage.style.background = borderColor;   // rect seams come from stage bg
+  relayout();                             // recompute rect gaps; redraw poly seams
+}
+
+/* ---- Persistence (IndexedDB) --------------------------------------------- */
+/* Everything needed to resume — settings, layout, divider/handle positions, and
+   the image blobs with their pan/zoom — is stored so a fresh tab/browser picks
+   up exactly where it left off. All wrapped so a storage failure (private mode,
+   blocked file:// IDB) degrades to "works but won't persist", never a crash. */
+let dbPromise = null, saveTimer = null, restoring = false;
+function idb() {
+  if (!dbPromise) dbPromise = new Promise((res, rej) => {
+    let r; try { r = indexedDB.open('photo-collage', 1); } catch (e) { rej(e); return; }
+    r.onupgradeneeded = () => r.result.createObjectStore('kv');
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+  return dbPromise;
+}
+async function idbSet(key, val) {
+  const db = await idb();
+  return new Promise((res, rej) => { const t = db.transaction('kv', 'readwrite'); t.objectStore('kv').put(val, key); t.oncomplete = () => res(); t.onerror = () => rej(t.error); });
+}
+async function idbGet(key) {
+  const db = await idb();
+  return new Promise((res, rej) => { const t = db.transaction('kv', 'readonly'); const rq = t.objectStore('kv').get(key); rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error); });
+}
+async function idbDel(key) {
+  const db = await idb();
+  return new Promise((res, rej) => { const t = db.transaction('kv', 'readwrite'); t.objectStore('kv').delete(key); t.oncomplete = () => res(); t.onerror = () => rej(t.error); });
+}
+function buildMeta() {
+  return {
+    v: 1, OUT_W, OUT_H, BORDER, borderColor, outFormat,
+    layoutId: layout.id,
+    adaptive: { av, bv, ah, bh },
+    general: { outerFracs: [...outerFracs], innerFracs: innerFracs.map(a => [...a]) },
+    poly: polyParams ? { ...polyParams } : null,
+    cells: frames.map(f => ({ hasImage: f.hasImage, scale: f.scale, offX: f.offX, offY: f.offY })),
+  };
+}
+function scheduleSave() {
+  if (restoring) return;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => { idbSet('meta', buildMeta()).catch(() => {}); }, 350);
+}
+function saveImageRec(i) {
+  const f = frames[i];
+  if (!f.blob) return;
+  idbSet('img' + i, { blob: f.blob, natW: f.natW, natH: f.natH }).catch(() => {});
+}
+function delImageRec(i) { idbDel('img' + i).catch(() => {}); }
+function loadBlobIntoFrame(f, blob, natW, natH, cell) {
+  return new Promise((resolve) => {
+    if (f.objectUrl) URL.revokeObjectURL(f.objectUrl);
+    f.objectUrl = URL.createObjectURL(blob); f.blob = blob;
+    const probe = new Image();
+    probe.onload = () => {
+      f.natW = natW || probe.naturalWidth; f.natH = natH || probe.naturalHeight;
+      f.img.src = f.objectUrl;
+      f.img.style.width = f.natW + 'px'; f.img.style.height = f.natH + 'px';
+      f.hasImage = true; f.el.classList.add('has-image');
+      f.scale = cell.scale; f.offX = cell.offX; f.offY = cell.offY;
+      resolve();
+    };
+    probe.onerror = () => resolve();
+    probe.src = f.objectUrl;
+  });
+}
+async function restore() {
+  restoring = true;
+  let meta = null;
+  try { meta = await idbGet('meta'); } catch (e) { meta = null; }
+  if (!meta || meta.v !== 1) { restoring = false; setLayout('2x2'); return; }
+
+  OUT_W = meta.OUT_W; OUT_H = meta.OUT_H;
+  BORDER = meta.BORDER != null ? meta.BORDER : 2;
+  borderColor = meta.borderColor || '#ffffff';
+  outFormat = meta.outFormat || 'jpeg';
+  document.getElementById('outW').value = OUT_W;
+  document.getElementById('outH').value = OUT_H;
+  document.getElementById('borderW').value = BORDER;
+  document.getElementById('borderColor').value = borderColor;
+  document.getElementById('formatSel').value = outFormat;
+  stage.style.background = borderColor;
+  stage.style.width = OUT_W + 'px'; stage.style.height = OUT_H + 'px';
+
+  const L = LAYOUTS.find(x => x.id === meta.layoutId) || LAYOUTS[0];
+  layout = L; activeCells = cellCount(L);
+  if (meta.adaptive) { av = meta.adaptive.av; bv = meta.adaptive.bv; ah = meta.adaptive.ah; bh = meta.adaptive.bh; }
+  if (meta.general) { outerFracs = meta.general.outerFracs || []; innerFracs = meta.general.innerFracs || []; }
+  polyParams = meta.poly || null;
+  document.getElementById('layoutSel').value = L.id;
+
+  for (let i = 0; i < MAX_CELLS; i++) {
+    const f = frames[i];
+    const cell = meta.cells && meta.cells[i];
+    let loaded = false;
+    if (i < activeCells && cell && cell.hasImage) {
+      let rec = null;
+      try { rec = await idbGet('img' + i); } catch (e) { rec = null; }
+      if (rec && rec.blob) { await loadBlobIntoFrame(f, rec.blob, rec.natW, rec.natH, cell); loaded = true; }
+    }
+    if (!loaded) {
+      if (f.objectUrl) URL.revokeObjectURL(f.objectUrl);
+      f.objectUrl = null; f.blob = null; f.hasImage = false;
+      f.img.removeAttribute('src'); f.el.classList.remove('has-image');
+      if (i >= activeCells) delImageRec(i);
+    }
+  }
+
+  fit(); relayout();
+  ensureSelection();
+  restoring = false;
+}
+
+/* ---- Dropdown ------------------------------------------------------------ */
+function buildDropdown() {
+  const sel = document.getElementById('layoutSel');
+  const groups = [];
+  for (const L of LAYOUTS) {
+    let g = groups.find(x => x.name === L.group);
+    if (!g) { g = { name: L.group, items: [] }; groups.push(g); }
+    g.items.push(L);
+  }
+  for (const g of groups) {
+    const og = document.createElement('optgroup'); og.label = g.name;
+    for (const L of g.items) {
+      const o = document.createElement('option'); o.value = L.id; o.textContent = L.label; og.appendChild(o);
+    }
+    sel.appendChild(og);
+  }
+  sel.value = layout.id;
+  sel.addEventListener('change', () => setLayout(sel.value));
+}
+
+/* ---- Boot ---------------------------------------------------------------- */
+for (let i = 0; i < MAX_CELLS; i++) makeFrame(i);
+makeAdaptiveHandles();
+seamSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+seamSvg.setAttribute('class', 'seam-overlay');
+seamSvg.style.display = 'none';
+stage.appendChild(seamSvg);
+polyDragSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+polyDragSvg.setAttribute('class', 'poly-drag');
+polyDragSvg.style.display = 'none';
+stage.appendChild(polyDragSvg);
+buildDropdown();
+stage.style.background = borderColor;
+stage.style.width = OUT_W + 'px'; stage.style.height = OUT_H + 'px';
+cellZoomEl = document.getElementById('cellZoom');
+cellZoomResetEl = document.getElementById('cellZoomReset');
+restore();
+
+window.addEventListener('resize', () => { fit(); });
+window.addEventListener('dragover', (e) => e.preventDefault());
+window.addEventListener('drop', (e) => e.preventDefault());
+
+document.getElementById('saveBtn').addEventListener('click', saveImage);
+document.getElementById('applySize').addEventListener('click', () => {
+  applyOutputSize(+document.getElementById('outW').value, +document.getElementById('outH').value);
+});
+document.getElementById('defaultSize').addEventListener('click', () => applyOutputSize(DEFAULT_W, DEFAULT_H));
+document.getElementById('clearAll').addEventListener('click', () => { frames.forEach(clearFrame); });
+document.getElementById('borderW').addEventListener('input', (e) => {
+  BORDER = Math.max(0, Math.min(50, Math.round(+e.target.value) || 0));
+  applyBorder(); scheduleSave();
+});
+document.getElementById('borderColor').addEventListener('input', (e) => {
+  borderColor = e.target.value; applyBorder(); scheduleSave();
+});
+document.getElementById('formatSel').addEventListener('change', (e) => {
+  outFormat = e.target.value; scheduleSave();
+});
+cellZoomEl.addEventListener('input', () => {
+  const f = (selectedIndex != null) ? frames[selectedIndex] : null;
+  if (!f || !f.hasImage) return;
+  zoomAt(f, sliderToScale(f, +cellZoomEl.value), f.cellW / 2, f.cellH / 2);
+});
+cellZoomResetEl.addEventListener('click', () => {
+  const f = (selectedIndex != null) ? frames[selectedIndex] : null;
+  if (f && f.hasImage) resetFrame(f);
+});
+</script>
+</body>
+</html>
